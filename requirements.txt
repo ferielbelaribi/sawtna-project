@@ -2,7 +2,14 @@ fastapi==0.104.1
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
-passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.3.0
-python-multipart==0.0.6
 python-dotenv==1.0.0
+python-multipart==0.0.6
+
+torch>=2.0.0
+torchvision>=0.17.1
+transformers==4.41.2
+pillow==10.1.0
+requests==2.31.0
+matplotlib==3.8.1
+opencv-python==4.8.1.78
+git+https://github.com/facebookresearch/segment-anything.git

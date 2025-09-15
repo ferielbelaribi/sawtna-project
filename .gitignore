@@ -3,6 +3,13 @@ __pycache__/
 **/__pycache__/
 *.pyc
 
+# Model files and folders
+*.pth
+*.pt
+app/models/text_classifier/
+app/models/*.pth
+
+
 # Environment variables
 .env
 
