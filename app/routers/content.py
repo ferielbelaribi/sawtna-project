@@ -18,18 +18,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/content", tags=["content"])
 
-
-
-
-
-
-
-
-
-
-
-router = APIRouter(prefix="/content", tags=["content"])
-
 @router.post("/", response_model=schemas.Content)
 def create_content(content: schemas.ContentCreate, db: Session = Depends(get_db), current_user: schemas.UserResponse = Depends(get_current_user)):
 #     # Set the user_id to the current authenticated user
