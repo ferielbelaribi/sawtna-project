@@ -32,7 +32,7 @@ Sawtna – AI-Powered Safe Palestine Content Posting App
              Apply one of the following filters like Gaussian Blur → smooth blur.
               ✅ Final result = an image that conveys the message but avoids deletion.
             3️⃣ Text Classification:
-             Transformer model (MARBERT / mBERT).
+             Transformer model (XLM-RoBERTa).
              Input: caption text → Output: Allowed / At Risk
              4️⃣ Text Re-Generation:
              If text is “At Risk”:Automatically rewrite it into safer language while keeping meaning.
@@ -47,9 +47,6 @@ Sawtna – AI-Powered Safe Palestine Content Posting App
              NLP: MARBERT (Arabic BERT), mBERT
              Image Generation: Stable Diffusion v1.5, Pollinations API
              Data Storage: Google Drive, CSV files
-        
-        📂 Project Structure:
-
 
         📊 Workflow: The application works in a pipeline where each user input passes through several AI models before producing the final safe content
              1️⃣ User Upload:The user uploads:
