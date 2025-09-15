@@ -13,4 +13,5 @@ pillow==10.1.0
 requests==2.31.0
 matplotlib==3.8.1
 opencv-python==4.8.1.78
+groq==0.31.1
 git+https://github.com/facebookresearch/segment-anything.git
