@@ -127,4 +127,11 @@ The application works in a pipeline where each user input passes through several
 **Style:**
 - Clean, minimal UI.  
 - Realistic or artistic visual assets.
+---
 
+## 🔗 Note:
+-To test the models, please place all test scripts inside the /models folder.
+ models are not stored in this repository due to size constraints.
+You can download them from the following Google Drive link:
+📥 https://drive.google.com/drive/folders/1XxmGQmw3bwyusGOjhf-ywcqkpDTGBwb2
+Once downloaded, put the models in the /models directory before running the test scripts.
