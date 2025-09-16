@@ -9,4 +9,4 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost/sawtna")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123vivedoussa@localhost/sawtna")

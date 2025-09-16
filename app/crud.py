@@ -40,7 +40,9 @@ def authenticate_user(db: Session, username: str, password: str):
     return user
 
 def get_contents_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    return db.query(models.GeneratedContent).filter(models.GeneratedContent.user_id == user_id).offset(skip).limit(limit).all()
+    return db.query(models.GeneratedContent).filter(
+        models.GeneratedContent.user_id == user_id
+    ).order_by(models.GeneratedContent.created_at.desc()).offset(skip).limit(limit).all()
 
 def create_content(db: Session, content: schemas.ContentCreate):
     db_content = models.GeneratedContent(
