@@ -81,13 +81,16 @@ async def check_text(text: str = Body(..., embed=True)) -> JSONResponse:
                 detail=f"Classification failed: {result.get('error', 'Unknown error')}"
             )
         
+        # Format response to match what Flutter expects
+        is_appropriate = result["label"] == "SFW"
+        
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
-                "text": text,
-                "label": result["label"],
+                "success": True,
+                "isAppropriate": is_appropriate,
                 "confidence": result["confidence"],
-                "status": "success"
+                "message": "Text classification successful"
             }
         )
         
@@ -116,7 +119,6 @@ async def check_image(file: UploadFile = File(...)) -> JSONResponse:
             )
         
         # Check file size (10MB limit)
-        file_size = 0
         content = await file.read()
         file_size = len(content)
         
@@ -126,16 +128,18 @@ async def check_image(file: UploadFile = File(...)) -> JSONResponse:
                 detail="File size too large (max 10MB)"
             )
         
-        # Check file type
-        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-        if file.content_type not in allowed_types:
+        # Check file type more flexibly
+        allowed_extensions = ['.jpeg', '.jpg', '.png', '.gif', '.webp', '.bmp']
+        file_extension = os.path.splitext(file.filename.lower())[1]
+        
+        if file_extension not in allowed_extensions:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type. Allowed types: {', '.join(allowed_types)}"
+                detail=f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
             )
         
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
+        # Create temporary file with proper extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
             temp_file_path = temp_file.name
             temp_file.write(content)
         
@@ -150,15 +154,16 @@ async def check_image(file: UploadFile = File(...)) -> JSONResponse:
                 detail=f"Classification failed: {result.get('error', 'Unknown error')}"
             )
         
+        # Format response to match what Flutter expects
+        is_appropriate = result["label"] == "SFW"
+        
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
-                "filename": file.filename,
-                "file_size": file_size,
-                "content_type": file.content_type,
-                "label": result["label"],
+                "success": True,
+                "isAppropriate": is_appropriate,
                 "confidence": result["confidence"],
-                "status": "success"
+                "message": "Image classification successful"
             }
         )
         
@@ -213,14 +218,96 @@ async def health_check() -> JSONResponse:
 # -------------------------
 @router.post("/check-blood")
 async def check_blood(file: UploadFile = File(...)):
-    file_path = f"temp_{file.filename}"
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    output_path, num_masks = detect_blood(file_path)
-    return {"original_file": file.filename, "processed_file": output_path, "blood_regions_detected": num_masks}
+    """
+    Check for blood regions in an image
+    """
+    temp_file_path = None
+    
+    try:
+        # Validate file
+        if not file.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No file provided"
+            )
+        
+        # Check file size (10MB limit)
+        content = await file.read()
+        file_size = len(content)
+        
+        if file_size > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size too large (max 10MB)"
+            )
+        
+        # Check file type
+        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type. Allowed types: {', '.join(allowed_types)}"
+            )
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
+            temp_file_path = temp_file.name
+            temp_file.write(content)
+        
+        logger.info(f"Processing blood detection for image: {file.filename}")
+        
+        # Detect blood
+        output_path, num_masks = detect_blood(temp_file_path)
+        
+        # If detection failed, return the original image
+        if num_masks == 0 and output_path == temp_file_path:
+            logger.warning("Blood detection may have failed, returning original image")
+        
+        # Get just the filename for the response
+        output_filename = os.path.basename(output_path)
+        
+        return {
+            "original_file": file.filename,
+            "processed_file": f"processed_images/{output_filename}",
+            "blood_regions_detected": num_masks,
+            "status": "success"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in blood detection: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Blood detection failed: {str(e)}"
+        )
+    
+    finally:
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                logger.debug(f"Cleaned up temporary file: {temp_file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {temp_file_path}: {e}")
+
+@router.get("/processed_images/{filename}")
+async def get_processed_image(filename: str):
+    """
+    Serve processed blood detection images
+    """
+    image_path = Path("processed_images") / filename
+    
+    if not image_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Processed image not found"
+        )
+    
+    return FileResponse(image_path)
 
 # -------------------------
-# Image generation - FIXED ENDPOINT
+# Image generation
 # -------------------------
 @router.post("/generate-image")
 async def generate_image_endpoint(prompt: str = Body(..., embed=True)):
@@ -407,92 +494,3 @@ async def debug_generate_image_endpoint(prompt: str = Body(..., embed=True)):
             "message": f"Exception: {str(e)}",
             "bytes_length": 0
         }
-@router.post("/check-blood")
-async def check_blood(file: UploadFile = File(...)):
-    """
-    Check for blood regions in an image
-    """
-    temp_file_path = None
-    
-    try:
-        # Validate file
-        if not file.filename:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No file provided"
-            )
-        
-        # Check file size (10MB limit)
-        content = await file.read()
-        file_size = len(content)
-        
-        if file_size > 10 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File size too large (max 10MB)"
-            )
-        
-        # Check file type
-        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
-        if file.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file type. Allowed types: {', '.join(allowed_types)}"
-            )
-        
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
-            temp_file_path = temp_file.name
-            temp_file.write(content)
-        
-        logger.info(f"Processing blood detection for image: {file.filename}")
-        
-        # Detect blood
-        output_path, num_masks = detect_blood(temp_file_path)
-        
-        # If detection failed, return the original image
-        if num_masks == 0 and output_path == temp_file_path:
-            logger.warning("Blood detection may have failed, returning original image")
-        
-        # Get just the filename for the response
-        output_filename = os.path.basename(output_path)
-        
-        return {
-            "original_file": file.filename,
-            "processed_file": f"processed_images/{output_filename}",
-            "blood_regions_detected": num_masks,
-            "status": "success"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error in blood detection: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Blood detection failed: {str(e)}"
-        )
-    
-    finally:
-        # Clean up temporary file
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-                logger.debug(f"Cleaned up temporary file: {temp_file_path}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temporary file {temp_file_path}: {e}")
-
-@router.get("/processed_images/{filename}")
-async def get_processed_image(filename: str):
-    """
-    Serve processed blood detection images
-    """
-    image_path = Path("processed_images") / filename
-    
-    if not image_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Processed image not found"
-        )
-    
-    return FileResponse(image_path)

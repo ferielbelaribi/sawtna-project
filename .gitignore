@@ -20,3 +20,23 @@ venv/
 # Editor settings
 .vscode/
 .idea/
+
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub-cache/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDEs
+.idea/
+.vscode/
+
+# Android / local settings
+**/local.properties
+**/.gradle
+
+# Xcode
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec

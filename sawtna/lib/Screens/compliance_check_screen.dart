@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import '../services/content_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 enum ComplianceStatus { none, complies, mayBeFlagged, highlyLikelyCensored }
 
@@ -14,6 +16,7 @@ class CheckerScreen extends StatefulWidget {
 
 class _CheckerScreenState extends State<CheckerScreen> {
   File? _image;
+  Uint8List? _imageBytes; // For web image data
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _contentController = TextEditingController();
   ComplianceStatus _status = ComplianceStatus.none;
@@ -22,16 +25,53 @@ class _CheckerScreenState extends State<CheckerScreen> {
   double _confidence = 0.0;
 
   Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    setState(() {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85, // Reduce quality to avoid large files
+        maxWidth: 1200, // Limit size
+      );
+      
       if (pickedFile != null) {
-        _image = File(pickedFile.path);
-        _contentController.clear();
+        setState(() {
+          _contentController.clear();
+          _status = ComplianceStatus.none;
+          _resultMessage = '';
+        });
+        
+        if (kIsWeb) {
+          // Handle web platform
+          final bytes = await pickedFile.readAsBytes();
+          setState(() {
+            _imageBytes = bytes;
+          });
+        } else {
+          // Handle mobile platform
+          setState(() {
+            _image = File(pickedFile.path);
+          });
+        }
       }
-    });
+    } catch (e) {
+      setState(() {
+        _resultMessage = 'Error picking image: $e';
+        _status = ComplianceStatus.mayBeFlagged;
+      });
+    }
   }
 
   void _checkCompliance() async {
+    // Validate text input
+    if (_contentController.text.isNotEmpty) {
+      if (_contentController.text.length > 5000) {
+        setState(() {
+          _resultMessage = 'Text is too long (max 5000 characters)';
+          _status = ComplianceStatus.mayBeFlagged;
+        });
+        return;
+      }
+    }
+    
     setState(() {
       _isLoading = true;
       _status = ComplianceStatus.none;
@@ -39,8 +79,24 @@ class _CheckerScreenState extends State<CheckerScreen> {
     });
 
     try {
-      if (_image != null) {
-        final result = await ContentService.classifyImage(_image!.path);
+      if ((_image != null) || (_imageBytes != null)) {
+        Map<String, dynamic> result;
+        
+        if (kIsWeb && _imageBytes != null) {
+          // For web, we need to upload the bytes directly
+          result = await ContentService.classifyImageFromBytes(_imageBytes!);
+        } else if (_image != null) {
+          // For mobile, use file path
+          result = await ContentService.classifyImageFromPath(_image!.path);
+        } else {
+          setState(() {
+            _isLoading = false;
+            _resultMessage = 'No image selected';
+            _status = ComplianceStatus.mayBeFlagged;
+          });
+          return;
+        }
+        
         _handleClassificationResult(result);
       } else if (_contentController.text.isNotEmpty) {
         final result = await ContentService.classifyText(_contentController.text);
@@ -49,12 +105,14 @@ class _CheckerScreenState extends State<CheckerScreen> {
         setState(() {
           _isLoading = false;
           _resultMessage = 'Please enter text or select an image';
+          _status = ComplianceStatus.mayBeFlagged;
         });
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _resultMessage = 'Error: $e';
+        _resultMessage = 'Error: ${e.toString()}';
+        _status = ComplianceStatus.mayBeFlagged;
       });
     }
   }
@@ -142,6 +200,21 @@ class _CheckerScreenState extends State<CheckerScreen> {
     }
   }
 
+  // Helper method to display image based on platform
+  Widget _buildImagePreview() {
+    if (kIsWeb) {
+      if (_imageBytes != null) {
+        return Image.memory(_imageBytes!, height: 200, fit: BoxFit.cover);
+      }
+    } else {
+      if (_image != null) {
+        return Image.file(_image!, height: 200, fit: BoxFit.cover);
+      }
+    }
+    
+    return Container();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,14 +241,15 @@ class _CheckerScreenState extends State<CheckerScreen> {
             TextField(
               controller: _contentController,
               maxLines: 4,
+              maxLength: 5000,
               decoration: const InputDecoration(
                 hintText: 'Enter text to check',
                 border: OutlineInputBorder(),
+                counterText: '',
               ),
             ),
             const SizedBox(height: 20),
-            if (_image != null)
-              Image.file(_image!, height: 200, fit: BoxFit.cover),
+            _buildImagePreview(),
             const SizedBox(height: 20),
             Row(
               children: [

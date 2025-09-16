@@ -1,6 +1,8 @@
+
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 
@@ -24,9 +26,9 @@ class ContentService {
         final data = json.decode(response.body);
         return {
           'success': true,
-          'label': data['label'],
-          'confidence': data['confidence'],
-          'isAppropriate': data['label'] == 'APPROPRIATE'
+          'isAppropriate': data['isAppropriate'] ?? false,
+          'confidence': data['confidence'] ?? 0.0,
+          'message': data['message'] ?? 'Text classification successful'
         };
       } else {
         final errorData = json.decode(response.body);
@@ -45,8 +47,8 @@ class ContentService {
     }
   }
 
-  // Classify image content
-  static Future<Map<String, dynamic>> classifyImage(String imagePath) async {
+  // Classify image content from file path (for mobile)
+  static Future<Map<String, dynamic>> classifyImageFromPath(String imagePath) async {
     try {
       final token = await AuthService.getToken();
       if (token == null) {
@@ -72,9 +74,62 @@ class ContentService {
       if (response.statusCode == 200) {
         return {
           'success': true,
-          'label': data['label'],
-          'confidence': data['confidence'],
-          'isAppropriate': data['label'] == 'APPROPRIATE'
+          'isAppropriate': data['isAppropriate'] ?? false,
+          'confidence': data['confidence'] ?? 0.0,
+          'message': data['message'] ?? 'Image classification successful'
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['detail'] ?? 'Failed to classify image',
+          'isAppropriate': false
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Connection error: $e',
+        'isAppropriate': false
+      };
+    }
+  }
+
+  // Classify image content from bytes (for web)
+  static Future<Map<String, dynamic>> classifyImageFromBytes(Uint8List imageBytes) async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        return {
+          'success': false,
+          'message': 'Not authenticated',
+          'isAppropriate': false
+        };
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/content/classify-image')
+      );
+      
+      request.headers['Authorization'] = 'Bearer $token';
+      
+      // Create a multipart file from bytes
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        imageBytes,
+        filename: 'image.jpg',
+      ));
+
+      var response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      final data = json.decode(responseBody);
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'isAppropriate': data['isAppropriate'] ?? false,
+          'confidence': data['confidence'] ?? 0.0,
+          'message': data['message'] ?? 'Image classification successful'
         };
       } else {
         return {
